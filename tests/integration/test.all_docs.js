@@ -53,7 +53,7 @@ adapters.forEach(function (adapter) {
               db.changes().on('complete', function (changes) {
                 // order of changes is not guaranteed in a
                 // clustered changes feed
-                changes.results.forEach(function (row, i) {
+                changes.results.forEach(function (row) {
                   ids.should.include(row.id, 'seq order');
                 });
                 db.changes({
@@ -62,7 +62,7 @@ adapters.forEach(function (adapter) {
                   // again, order is not guaranteed so
                   // unsure if this is a useful test
                   ids = ['2', '1', '3', '0'];
-                  changes.results.forEach(function (row, i) {
+                  changes.results.forEach(function (row) {
                     ids.should.include(row.id, 'descending=true');
                   });
                   done();
@@ -74,63 +74,80 @@ adapters.forEach(function (adapter) {
       });
     });
 
-    it('Testing allDocs opts.keys', function (done) {
+    it('Testing allDocs opts.keys', function () {
       var db = new PouchDB(dbs.name);
       function keyFunc(doc) {
         return doc.key;
       }
-      testUtils.writeDocs(db, JSON.parse(JSON.stringify(origDocs)),
-        function () {
-        var keys = ['3', '1'];
-        db.allDocs({ keys: keys }, function (err, result) {
-          result.rows.map(keyFunc).should.deep.equal(keys);
-          keys = ['2', '0', '1000'];
-          db.allDocs({ keys: keys }, function (err, result) {
-            result.rows.map(keyFunc).should.deep.equal(keys);
-            result.rows[2].error.should.equal('not_found');
-            db.allDocs({
-              keys: keys,
-              descending: true
-            }, function (err, result) {
-              result.rows.map(keyFunc).should.deep.equal(['1000', '0', '2']);
-              result.rows[0].error.should.equal('not_found');
-              db.allDocs({
-                keys: keys,
-                startkey: 'a'
-              }, function (err, result) {
-                should.exist(err);
-                db.allDocs({
-                  keys: keys,
-                  endkey: 'a'
-                }, function (err, result) {
-                  should.exist(err);
-                  db.allDocs({ keys: [] }, function (err, result) {
-                    result.rows.should.have.length(0);
-                    db.get('2', function (err, doc) {
-                      db.remove(doc, function (err, doc) {
-                        db.allDocs({
-                          keys: keys,
-                          include_docs: true
-                        }, function (err, result) {
-                          result.rows.map(keyFunc).should.deep.equal(keys);
-                          done();
-                        });
-                      });
-                    });
-                  });
-                });
-              });
-            });
-          });
+      var keys;
+      return db.bulkDocs(origDocs).then(function () {
+        keys = ['3', '1'];
+        return db.allDocs({keys: keys});
+      }).then(function (result) {
+        result.rows.map(keyFunc).should.deep.equal(keys);
+        keys = ['2', '0', '1000'];
+        return db.allDocs({ keys: keys });
+      }).then(function (result) {
+        result.rows.map(keyFunc).should.deep.equal(keys);
+        result.rows[2].error.should.equal('not_found');
+        return db.allDocs({
+          keys: keys,
+          descending: true
         });
+      }).then(function (result) {
+        result.rows.map(keyFunc).should.deep.equal(['1000', '0', '2']);
+        result.rows[0].error.should.equal('not_found');
+        return db.allDocs({
+          keys: keys,
+          startkey: 'a'
+        });
+      }).then(function () {
+        throw new Error('expected an error');
+      }, function (err) {
+        should.exist(err);
+        return db.allDocs({
+          keys: keys,
+          endkey: 'a'
+        });
+      }).then(function () {
+          throw new Error('expected an error');
+        }, function (err) {
+        should.exist(err);
+        return db.allDocs({keys: []});
+      }).then(function (result) {
+        result.rows.should.have.length(0);
+        return db.get('2');
+      }).then(function (doc) {
+        return db.remove(doc);
+      }).then(function () {
+        return db.allDocs({
+          keys: keys,
+          include_docs: true
+        });
+      }).then(function (result) {
+        result.rows.map(keyFunc).should.deep.equal(keys);
+      });
+    });
+
+    it('Testing allDocs opts.keys with skip', function () {
+      var db = new PouchDB(dbs.name);
+      return db.bulkDocs(origDocs).then(function () {
+        return db.allDocs({
+          keys: ['3', '1'],
+          skip: 1
+        });
+      }).then(function (res) {
+        res.total_rows.should.equal(4);
+        res.rows.should.have.length(1);
+        res.rows[0].id.should.equal('1');
       });
     });
 
     it('Testing allDocs invalid opts.keys', function () {
       var db = new PouchDB(dbs.name);
-      return db.allDocs({keys: 1234}).then(function() {
+      return db.allDocs({keys: 1234}).then(function () {
         throw 'should not be here';
-      }).catch(function(err) {
+      }).catch(function (err) {
         should.exist(err);
       });
     });
@@ -173,7 +190,7 @@ adapters.forEach(function (adapter) {
           function () {
           db.get('3', function (err, doc) {
             doc.updated = 'totally';
-            db.put(doc, function (err, doc) {
+            db.put(doc, function () {
               db.changes({
                 since: update_seq
               }).on('complete', function (changes) {
@@ -195,7 +212,7 @@ adapters.forEach(function (adapter) {
         db.changes({
           include_docs: true
         }).on('complete', function (changes) {
-          changes.results.forEach(function (row, i) {
+          changes.results.forEach(function (row) {
             if (row.id === '0') {
               row.doc.a.should.equal(1);
             }
@@ -220,8 +237,8 @@ adapters.forEach(function (adapter) {
           _rev: '2-ff01552213fafa022e6167113ed01087',
           value: 'Z'
         };
-        db.put(conflictDoc1, { new_edits: false }, function (err, doc) {
-          db.put(conflictDoc2, { new_edits: false }, function (err, doc) {
+        db.put(conflictDoc1, { new_edits: false }, function () {
+          db.put(conflictDoc2, { new_edits: false }, function () {
             db.get('3', function (err, winRev) {
               winRev._rev.should.equal(conflictDoc2._rev);
               db.changes({
@@ -233,7 +250,7 @@ adapters.forEach(function (adapter) {
                   .should.deep.equal(['0', '1', '2', '3'],
                     'all ids are in _changes');
 
-                var result = changes.results.filter(function (row, i) {
+                var result = changes.results.filter(function (row) {
                   return row.id === '3';
                 })[0];
 
@@ -278,7 +295,7 @@ adapters.forEach(function (adapter) {
           {_id: 'a', foo: 'a'}
         ]
       };
-      db.bulkDocs(docs, function (err, res) {
+      db.bulkDocs(docs, function () {
         db.allDocs({
           startkey: 'z',
           endkey: 'z'
@@ -292,7 +309,7 @@ adapters.forEach(function (adapter) {
     it('3883 start_key end_key aliases', function () {
       var db = new PouchDB(dbs.name);
       var docs = [{_id: 'a', foo: 'a'}, {_id: 'z', foo: 'z'}];
-      return db.bulkDocs(docs).then(function() {
+      return db.bulkDocs(docs).then(function () {
         return db.allDocs({start_key: 'z', end_key: 'z'});
       }).then(function (result) {
         result.rows.should.have.length(1, 'Exclude a result');
@@ -427,14 +444,14 @@ adapters.forEach(function (adapter) {
           {_id: "z", foo: "z"}
         ]
       };
-      db.bulkDocs(docs, function (err, res) {
+      db.bulkDocs(docs, function () {
         db.allDocs({ startkey: 'x', limit: 1, skip : 1}, function (err, res) {
           res.total_rows.should.equal(4,  'Accurately return total_rows count');
           res.rows.should.have.length(1,  'Correctly limit the returned rows');
           res.rows[0].id.should.equal('y', 'Correctly skip 1 doc');
 
           db.get('x', function (err, xDoc) {
-            db.remove(xDoc, function (err, res) {
+            db.remove(xDoc, function () {
               db.allDocs({ startkey: 'w', limit: 2, skip : 1},
                 function (err, res) {
                 res.total_rows.should
@@ -459,7 +476,7 @@ adapters.forEach(function (adapter) {
           {_id: 'a', foo: 'a'}
         ]
       };
-      db.bulkDocs(docs, function (err, res) {
+      db.bulkDocs(docs, function () {
         db.allDocs({
           startkey: 'a',
           limit: 1
@@ -487,7 +504,7 @@ adapters.forEach(function (adapter) {
           }
         ]
       };
-      db.bulkDocs(docs, function (err, res) {
+      db.bulkDocs(docs, function () {
         db.allDocs({
           startkey: id1,
           endkey: id2
@@ -521,12 +538,12 @@ adapters.forEach(function (adapter) {
             db.allDocs({
               key: '1',
               startkey: '1'
-            }, function (err, res) {
+            }, function (err) {
               should.not.exist(err);
               db.allDocs({
                 key: '1',
                 endkey: '1'
-              }, function (err, res) {
+              }, function (err) {
                 should.not.exist(err);
                 // when mixing key/startkey or key/endkey, the results
                 // are very weird and probably undefined, so don't go beyond
@@ -539,55 +556,50 @@ adapters.forEach(function (adapter) {
       });
     });
 
-    it('test inclusive_end=false', function (done) {
-      new PouchDB(dbs.name).then(function (db) {
-        var docs = [
-          { _id: '1' },
-          { _id: '2' },
-          { _id: '3' },
-          { _id: '4' }
-        ];
-        return db.bulkDocs({docs: docs}).then(function () {
-          return db.allDocs({inclusive_end: false, endkey: '2'});
-        }).then(function (res) {
-          res.rows.should.have.length(1);
-          return db.allDocs({inclusive_end: false, endkey: '1'});
-        }).then(function (res) {
-          res.rows.should.have.length(0);
-          return db.allDocs({inclusive_end: false, endkey: '1',
-            startkey: '0'});
-        }).then(function (res) {
-          res.rows.should.have.length(0);
-          return db.allDocs({inclusive_end: false, endkey: '5'});
-        }).then(function (res) {
-          res.rows.should.have.length(4);
-          return db.allDocs({inclusive_end: false, endkey: '4'});
-        }).then(function (res) {
-          res.rows.should.have.length(3);
-          return db.allDocs({inclusive_end: false, endkey: '4',
-            startkey: '3'});
-        }).then(function (res) {
-          res.rows.should.have.length(1);
-          return db.allDocs({inclusive_end: false, endkey: '1',
-            descending: true});
-        }).then(function (res) {
-          res.rows.should.have.length(3);
-          return db.allDocs({inclusive_end: true, endkey: '4'});
-        }).then(function (res) {
-          res.rows.should.have.length(4);
-          return db.allDocs({
-            descending: true,
-            startkey: '3',
-            endkey: '2',
-            inclusive_end: false
-          });
+    it('test inclusive_end=false', function () {
+      var db = new PouchDB(dbs.name);
+      var docs = [
+        { _id: '1' },
+        { _id: '2' },
+        { _id: '3' },
+        { _id: '4' }
+      ];
+      return db.bulkDocs({docs: docs}).then(function () {
+        return db.allDocs({inclusive_end: false, endkey: '2'});
+      }).then(function (res) {
+        res.rows.should.have.length(1);
+        return db.allDocs({inclusive_end: false, endkey: '1'});
+      }).then(function (res) {
+        res.rows.should.have.length(0);
+        return db.allDocs({inclusive_end: false, endkey: '1',
+                           startkey: '0'});
+      }).then(function (res) {
+        res.rows.should.have.length(0);
+        return db.allDocs({inclusive_end: false, endkey: '5'});
+      }).then(function (res) {
+        res.rows.should.have.length(4);
+        return db.allDocs({inclusive_end: false, endkey: '4'});
+      }).then(function (res) {
+        res.rows.should.have.length(3);
+        return db.allDocs({inclusive_end: false, endkey: '4',
+                           startkey: '3'});
+      }).then(function (res) {
+        res.rows.should.have.length(1);
+        return db.allDocs({inclusive_end: false, endkey: '1',
+                           descending: true});
+      }).then(function (res) {
+        res.rows.should.have.length(3);
+        return db.allDocs({inclusive_end: true, endkey: '4'});
+      }).then(function (res) {
+        res.rows.should.have.length(4);
+        return db.allDocs({
+          descending: true,
+          startkey: '3',
+          endkey: '2',
+          inclusive_end: false
         });
       }).then(function (res) {
         res.rows.should.have.length(1);
-      }).then(function () {
-        done();
-      }, function (err) {
-        done(err);
       });
     });
 
@@ -624,7 +636,7 @@ adapters.forEach(function (adapter) {
       return db.bulkDocs(docs).then(function () {
         return paginate().then(function () {
           // try running all queries at once to try to isolate race condition
-          return PouchDB.utils.Promise.all(allkeys.map(function (key) {
+          return testUtils.Promise.all(allkeys.map(function (key) {
             return db.allDocs({
               limit: 100,
               include_docs: true,
@@ -642,45 +654,55 @@ adapters.forEach(function (adapter) {
       });
     });
 
-    it('test empty db', function (done) {
-      return new PouchDB(dbs.name).then(function (db) {
-        return db.allDocs().then(function (res) {
-          res.rows.should.have.length(0);
-          res.total_rows.should.equal(0);
-          done();
-        });
+    it('test empty db', function () {
+      var db = new PouchDB(dbs.name);
+      return db.allDocs().then(function (res) {
+        res.rows.should.have.length(0);
+        res.total_rows.should.equal(0);
       });
     });
 
-    it('test after db close', function (done) {
-      return new PouchDB(dbs.name).then(function (db) {
-        return db.close().then(function () {
-          return db.allDocs().catch(function (err) {
-            err.message.should.equal('database is closed');
-            done();
-          });
+    it('test after db close', function () {
+      var db = new PouchDB(dbs.name);
+      return db.close().then(function () {
+        return db.allDocs().catch(function (err) {
+          err.message.should.equal('database is closed');
         });
       });
     });
 
     if (adapter === 'local') { // chrome doesn't like \u0000 in URLs
-      it('test unicode ids and revs', function (done) {
+      it('test unicode ids and revs', function () {
         var db = new PouchDB(dbs.name);
         var id = 'baz\u0000';
         var rev;
         return db.put({_id: id}).then(function (res) {
           rev = res.rev;
         }).then(function () {
-            return db.get(id);
-          }).then(function (doc) {
-            doc._id.should.equal(id);
-            doc._rev.should.equal(rev);
-            return db.allDocs({keys: [id]});
-          }).then(function (res) {
-            res.rows.should.have.length(1);
-            res.rows[0].value.rev.should.equal(rev);
-          }).then(done, done);
+          return db.get(id);
+        }).then(function (doc) {
+          doc._id.should.equal(id);
+          doc._rev.should.equal(rev);
+          return db.allDocs({keys: [id]});
+        }).then(function (res) {
+          res.rows.should.have.length(1);
+          res.rows[0].value.rev.should.equal(rev);
+        });
       });
     }
+
+    it('5793 _conflicts should not exist if no conflicts', function () {
+      var db = new PouchDB(dbs.name);
+      return db.put({
+        _id: '0', a: 1
+      }).then(function () {
+        return db.allDocs({
+          include_docs: true,
+          conflicts: true
+        });
+      }).then(function (result) {
+        should.not.exist(result.rows[0].doc._conflicts);
+      });
+    });
   });
 });

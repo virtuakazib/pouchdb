@@ -13,6 +13,8 @@ db.remove(docId, docRev, [options], [callback])
 
 Deletes the document. `doc` is required to be a document with at least an `_id` and a `_rev` property. Sending the full document will work as well.
 
+See [filtered replication](http://pouchdb.com/api.html#filtered-replication) for why you might want to use `put()` with `{_deleted: true}` instead.
+
 #### Example Usage:
 
 {% include code/start.html id="delete_doc" type="callback" %}
@@ -26,6 +28,18 @@ db.get('mydoc', function(err, doc) {
 });
 {% endhighlight %}
 {% include code/end.html %}
+
+{% include code/start.html id="delete_doc" type="async" %}
+{% highlight js %}
+try {
+  var doc = await db.get('mydoc');
+  var response = await db.remove(doc);
+} catch (err) {
+  console.log(err);
+}
+{% endhighlight %}
+{% include code/end.html %}
+
 {% include code/start.html id="delete_doc" type="promise" %}
 {% highlight js %}
 db.get('mydoc').then(function(doc) {
@@ -61,6 +75,18 @@ db.get('mydoc', function(err, doc) {
 });
 {% endhighlight %}
 {% include code/end.html %}
+
+{% include code/start.html id="delete_doc3" type="async" %}
+{% highlight js %}
+try {
+  var doc = await db.get('mydoc');
+  var response = await db.remove(doc._id, doc._rev);
+} catch (err) {
+  console.log(err);
+}
+{% endhighlight %}
+{% include code/end.html %}
+
 {% include code/start.html id="delete_doc3" type="promise" %}
 {% highlight js %}
 db.get('mydoc').then(function(doc) {
@@ -87,6 +113,19 @@ db.get('mydoc', function(err, doc) {
 });
 {% endhighlight %}
 {% include code/end.html %}
+
+{% include code/start.html id="delete_doc2" type="async" %}
+{% highlight js %}
+try {
+  var doc = await db.get('mydoc');
+  doc._deleted = true;
+  var result = await db.put(doc);
+} catch (err) {
+  console.log(err);
+}
+{% endhighlight %}
+{% include code/end.html %}
+
 {% include code/start.html id="delete_doc2" type="promise" %}
 {% highlight js %}
 db.get('mydoc').then(function(doc) {

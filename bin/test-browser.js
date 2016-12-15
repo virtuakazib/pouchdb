@@ -16,7 +16,8 @@ var testTimeout = 30 * 60 * 1000;
 var username = process.env.SAUCE_USERNAME;
 var accessKey = process.env.SAUCE_ACCESS_KEY;
 
-var SELENIUM_VERSION = process.env.SELENIUM_VERSION || '2.45.0';
+var SELENIUM_VERSION = process.env.SELENIUM_VERSION || '2.53.1';
+var FIREFOX_BIN = process.env.FIREFOX_BIN;
 
 // BAIL=0 to disable bailing
 var bail = process.env.BAIL !== '0';
@@ -61,9 +62,6 @@ if (process.env.GREP) {
 if (process.env.ADAPTERS) {
   qs.adapters = process.env.ADAPTERS;
 }
-if (process.env.ES5_SHIM || process.env.ES5_SHIMS) {
-  qs.es5shim = true;
-}
 if (process.env.AUTO_COMPACTION) {
   qs.autoCompaction = true;
 }
@@ -72,6 +70,15 @@ if (process.env.SERVER) {
 }
 if (process.env.SKIP_MIGRATION) {
   qs.SKIP_MIGRATION = process.env.SKIP_MIGRATION;
+}
+if (process.env.POUCHDB_SRC) {
+  qs.src = process.env.POUCHDB_SRC;
+}
+if (process.env.COUCH_HOST) {
+  qs.couchHost = process.env.COUCH_HOST;
+}
+if (process.env.NEXT) {
+  qs.NEXT = '1';
 }
 
 testUrl += '?';
@@ -82,7 +89,6 @@ if (process.env.TRAVIS &&
     process.env.TRAVIS_SECURE_ENV_VARS === 'false') {
   console.error('Not running test, cannot connect to saucelabs');
   process.exit(0);
-  return;
 }
 
 function testError(e) {
@@ -108,7 +114,7 @@ function postResult(result) {
         method: 'POST',
         uri: process.env.DASHBOARD_HOST + '/performance_results',
         json: result
-      }, function (error, response, body) {
+      }, function (error) {
         console.log(result);
         process.exit(!!error);
       });
@@ -135,12 +141,12 @@ function testComplete(result) {
 function startSelenium(callback) {
   // Start selenium
   var opts = {version: SELENIUM_VERSION};
-  selenium.install(opts, function(err) {
+  selenium.install(opts, function (err) {
     if (err) {
       console.error('Failed to install selenium');
       process.exit(1);
     }
-    selenium.start(opts, function(err, server) {
+    selenium.start(opts, function () {
       sauceClient = wd.promiseChainRemote();
       callback();
     });
@@ -182,6 +188,9 @@ function startTest() {
     'idle-timeout': 599,
     'tunnel-identifier': tunnelId
   };
+  if (FIREFOX_BIN) {
+    opts.firefox_binary = FIREFOX_BIN;
+  }
 
   sauceClient.init(opts).get(testUrl, function () {
 

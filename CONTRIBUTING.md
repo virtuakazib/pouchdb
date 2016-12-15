@@ -48,10 +48,16 @@ PouchDB needs the following to be able to build and test your build, if you have
   * [Node.js](http://nodejs.org/)
   * [CouchDB](http://couchdb.apache.org/)
 
+CouchDB must be running and available at `http://localhost:5984`. If you can open that URL in a browser and see `"couchdb": "Welcome"`, then it's working.
+
+You'll also need to ensure that CORS is enabled on the CouchDB. You can easily do this by running `npm install -g add-cors-to-couchdb` and then `add-cors-to-couchdb`.
+
+**On Windows?** PouchDB's build and tests work on Windows, but you will have to follow [Microsoft's guidelines for Windows](https://github.com/Microsoft/nodejs-guidelines/blob/master/windows-environment.md#environment-setup-and-configuration) to ensure you can install and compile native add-ons. Also, we recommend [Git Bash for Windows](https://git-scm.com/download/win) because our build relies on many Bash- and Unix-isms. Another option is [Windows Subsystem for Linux](https://en.wikipedia.org/wiki/Windows_Subsystem_for_Linux).
+
 Building PouchDB
 --------------------------------------
 
-All dependancies installed? great, now building PouchDB itself is a breeze:
+All dependencies installed? great, now building PouchDB itself is a breeze:
 
     $ cd pouchdb
     $ npm install
@@ -59,7 +65,9 @@ All dependancies installed? great, now building PouchDB itself is a breeze:
 
 You will now have various distributions of PouchDB in your `dist` folder, congratulations.
 
- * If you are on windows, you will need `node-gyp` to install levelup, visit https://github.com/TooTallNate/node-gyp#installation for installation instructions.
+Note that the source code is in `src/`, which is built by [Rollup](http://rollupjs.org/) as a
+Node module to `lib/`, which is then built by [Browserify](http://browserify.com/) as a browser-ready
+UMD module to `dist/`. All of this logic is in `bin/build.sh`.
 
 Testing PouchDB
 --------------------------------------
@@ -95,7 +103,16 @@ Workflows can vary, but here is a very simple workflow for contributing a bug fi
 Building PouchDB Documentation
 --------------------------------------
 
-The source for the website http://pouchdb.com is stored inside the `docs` directory of the PouchDB repository, you can make changes and submit pull requests as with any other patch. To build and view the website locally you will need to install [jekyll](http://jekyllrb.com/) then:
+The source for the website http://pouchdb.com is stored inside the `docs` directory of the PouchDB repository, you can make changes and submit pull requests as with any other patch. To build and view the website locally you will need to install [jekyll](http://jekyllrb.com/) and a few other gems.  Jekyll is installed using [bundler](http://bundler.io/) so you need to install that first.
+
+    $ gem install bundler
+    $ npm run install-jekyll
+
+If you haven't already done so, you'll also need to run `npm install` to pull in packages for the dev server:
+
+    $ npm install
+
+Now you can build the site and start the dev server with:
 
     $ npm run build-site
 
@@ -104,9 +121,15 @@ You should now find the documentation at http://127.0.0.1:4000
 Writing a PouchDB Blog Post
 --------------------------------------
 
-Writing a blog post for PouchDB is exactly the same process as other contributions, the blog posts are kept @ https://github.com/pouchdb/pouchdb/tree/master/docs/_posts, just build the site as documented above, its usually easiest to copy an existing post and write away.
+Writing a blog post for PouchDB is exactly the same process as other contributions; all the blog posts are kept at https://github.com/pouchdb/pouchdb/tree/master/docs/_posts. We always welcome blog posts from new contributors!
 
-If you want to be sure the blog post is relevant, open an issue on what you want to write about to hear back from reviewers.
+### Steps
+
+1. Open up an issue proposing the blog post if you need help getting ideas or structuring it.
+2. Add yourself as an author to https://github.com/pouchdb/pouchdb/blob/master/docs/_data/authors.yml. (Make sure you have a [Gravatar](http://en.gravatar.com/) too.)
+3. Add a new blog post with the date that you expect it will be published (we can always change it later).
+4. Write something!
+5. Run `npm run build-site` and you will always have a fresh version of the site at localhost:4000. You may need to Cmd-Shift-R or Ctrl-Shift-R (hard refresh) to see the latest version, since we use AppCache.
 
 Committers!
 --------------
@@ -135,14 +158,19 @@ With great power comes great responsibility yada yada yada:
 Release Procedure
 -----------------
 
- * Copy the last release post from ./docs/_posts/date-pouchdb-version.md, ammend date and version and fill in release notes
+ * Copy the last release post from ./docs/_posts/date-pouchdb-version.md, amend date and version and fill in release notes
  * Push release post
- * `./node_modules/.bin/tin -v $VERSION`
- * Put the new version in `lib/version-browser.js` too
+ * `npm run set-version -- $VERSION`
  * `npm run release`
  * Copy the `dist/pouchdb*` files from the $VERSION tag on github, paste the release notes and add the distribution files to Github Releases, rename `pouchdb.min.js` to `pouchdb-$VERSION.min.js` after you upload it.
- * `./node_modules/.bin/tin -v $VERSION+1-prerelease`
- * Put the new prerelease version in `lib/version-browser.js` too
  * Update docs/_config.yml to the current version
  * Push updated versions to master
  * `npm run publish-site`
+
+To do a dry run release, you can run:
+
+    DRY_RUN=1 npm run release
+
+To do a beta release to npm (using the dist-tag `beta`), do:
+
+    BETA=1 npm run release

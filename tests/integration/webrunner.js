@@ -5,13 +5,20 @@
 // use query parameter pluginFile if present,
 // eg: test.html?pluginFile=memory.pouchdb.js
 var preferredAdapters = window.location.search.match(/[?&]adapters=([^&]+)/);
-var scriptsToLoad = ['../../dist/pouchdb.js'];
+var pouchdbSrc = window.location.search.match(/[?&]src=([^&]+)/);
+if (pouchdbSrc) {
+  pouchdbSrc = decodeURIComponent(pouchdbSrc[1]);
+} else {
+  pouchdbSrc = '../../packages/node_modules/pouchdb/dist/pouchdb.js';
+}
+var scriptsToLoad = [pouchdbSrc];
 if (preferredAdapters) {
   preferredAdapters = preferredAdapters[1].split(',');
   preferredAdapters.forEach(function (adapter) {
     if (adapter !== 'websql' && adapter !== 'idb') {
       // load from plugin
-      scriptsToLoad.push('../../dist/pouchdb.' + adapter + '.js');
+      scriptsToLoad.push(
+        '../../packages/node_modules/pouchdb/dist/pouchdb.' + adapter + '.js');
     }
   });
 }
@@ -27,7 +34,7 @@ function asyncLoadScript(url, callback) {
   script.src = url;
 
   // Handle the case where an optional callback was passed in.
-  if ("function" === typeof(callback)) {
+  if ("function" === typeof (callback)) {
     script.onload = function () {
       callback();
 
@@ -69,7 +76,32 @@ function startTests() {
 
   function onReady() {
     modifyGlobals();
+
     var runner = mocha.run();
+
+    // Capture logs for selenium output
+    var logs = [];
+
+    (function (){
+
+      var oldLog = console.log;
+      console.log = function () {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('log');
+        logs.push(args);
+        oldLog.apply(console, arguments);
+      };
+
+      var oldError = console.error;
+      console.error = function () {
+        var args = Array.prototype.slice.call(arguments);
+        args.unshift('error');
+        logs.push(args);
+        oldError.apply(console, arguments);
+      };
+
+    })();
+
     window.results = {
       browser: navigator.userAgent,
       lastPassed: '',
@@ -84,6 +116,7 @@ function startTests() {
     });
 
     runner.on('fail', function (e) {
+      window.results.logs = logs;
       window.results.failed++;
       window.results.failures.push({
         title: e.title,
@@ -93,6 +126,7 @@ function startTests() {
     });
 
     runner.on('end', function () {
+      window.results.logs = logs;
       window.results.completed = true;
       window.results.passed++;
     });
@@ -101,38 +135,4 @@ function startTests() {
   loadNext();
 }
 
-if (window.cordova) {
-  var hasGrep = window.GREP &&
-      window.location.search.indexOf('grep=') === -1;
-  var hasEs5Shim = window.ES5_SHIM &&
-      window.location.search.indexOf('es5Shim=') === -1;
-  var hasAutoCompaction = window.AUTO_COMPACTION &&
-    window.location.search.indexOf('autoCompaction') === -1;
-  var hasAdapters = window.ADAPTERS &&
-    window.location.search.indexOf('adapters=') === -1;
-
-  if (hasGrep || hasEs5Shim || hasAutoCompaction || hasAdapters) {
-    var params = [];
-    if (hasGrep) {
-      params.push('grep=' + encodeURIComponent(window.GREP));
-    }
-    if (hasEs5Shim) {
-      params.push('es5Shim=' + encodeURIComponent(window.ES5_SHIM));
-    }
-    if (hasAutoCompaction) {
-      params.push('autoCompaction=' +
-        encodeURIComponent(window.AUTO_COMPACTION));
-    }
-    if (hasAdapters) {
-      params.push('adapters=' + encodeURIComponent(window.ADAPTERS));
-    }
-    window.location.search += (window.location.search ? '&' : '?') +
-      params.join('&');
-  } else {
-    document.addEventListener("deviceready", startTests, false);
-  }
-} else {
-  startTests();
-}
-
-
+startTests();

@@ -35,16 +35,16 @@ adapters.forEach(function (adapters) {
       var repl = db.replicate.to(dbs.remote, {retry: true, live: true});
       var counter = 0;
 
-      repl.on('complete', function() { done(); });
+      repl.on('complete', function () { done(); });
 
-      repl.on('active', function(evt) {
+      repl.on('active', function () {
         counter++;
         if (!(counter === 2 || counter === 4)) {
           done('active fired incorrectly');
         }
       });
 
-      repl.on('paused', function(evt) {
+      repl.on('paused', function () {
         counter++;
         // We should receive a paused event when replication
         // starts because there is nothing to replicate
@@ -65,22 +65,22 @@ adapters.forEach(function (adapters) {
 
       var db = new PouchDB(dbs.name);
 
-      db.bulkDocs([{_id: 'a'}, {_id: 'b'}]).then(function() {
+      db.bulkDocs([{_id: 'a'}, {_id: 'b'}]).then(function () {
 
         var repl = db.replicate.to(dbs.remote, {retry: true, live: true});
 
         var counter = 0;
 
-        repl.on('complete', function() { done(); });
+        repl.on('complete', function () { done(); });
 
-        repl.on('active', function(evt) {
+        repl.on('active', function () {
           counter++;
           if (!(counter === 1 || counter === 3 || counter === 5)) {
             done('active fired incorrectly:' + counter);
           }
         });
 
-        repl.on('paused', function(evt) {
+        repl.on('paused', function () {
           counter++;
           // We should receive a paused event when replication
           // starts because there is nothing to replicate
@@ -105,10 +105,11 @@ adapters.forEach(function (adapters) {
       }
 
       var db = new PouchDB(dbs.name);
+      var remote = new PouchDB(dbs.remote);
       var rejectAjax = true;
-      var ajax = PouchDB.utils.ajax;
+      var ajax = remote._ajax;
 
-      PouchDB.utils.ajax = function (opts, cb) {
+      remote._ajax = function (opts, cb) {
         if (rejectAjax) {
           cb(new Error('flunking you'));
         } else {
@@ -116,9 +117,9 @@ adapters.forEach(function (adapters) {
         }
       };
 
-      db.bulkDocs([{_id: 'a'}, {_id: 'b'}]).then(function() {
+      db.bulkDocs([{_id: 'a'}, {_id: 'b'}]).then(function () {
 
-        var repl = db.replicate.to(dbs.remote, {
+        var repl = db.replicate.to(remote, {
           retry: true,
           live: true,
           back_off_function: function () { return 0; }
@@ -126,12 +127,12 @@ adapters.forEach(function (adapters) {
 
         var counter = 0;
 
-        repl.on('complete', function() {
-          PouchDB.utils.ajax = ajax;
+        repl.on('complete', function () {
+          remote._ajax = ajax;
           done();
         });
 
-        repl.on('active', function(evt) {
+        repl.on('active', function () {
           counter++;
           if (counter === 2) {
             // All good, wait for pause
@@ -146,7 +147,7 @@ adapters.forEach(function (adapters) {
           }
         });
 
-        repl.on('paused', function(err) {
+        repl.on('paused', function (err) {
           counter++;
           // Replication starts with a paused(err) because ajax is
           // failing
@@ -170,5 +171,190 @@ adapters.forEach(function (adapters) {
       }).catch(done);
     });
 
+
+    // this test sets up a 2 way replication which initially transfers
+    // documents from a remote to a local database.
+    // At the same time, we insert documents locally - the changes
+    // should propagate to the remote database and then back to the
+    // local database via the live replications.
+    // Previously, this test resulted in 'change' events being
+    // generated for already-replicated documents. When PouchDB is working
+    // as expected, each remote document should be passed to a
+    // change event exactly once (though a change might contain multiple docs)
+    it('#4627 Test no duplicate changes in live replication', function (done) {
+      var db = new PouchDB(dbs.name);
+      var remote = new PouchDB(dbs.remote);
+      var docId = -1;
+      var docsToGenerate = 10;
+      var lastChange = -1;
+      var firstReplication;
+      var secondReplication;
+      var completeCalls = 0;
+
+      function generateDocs(n) {
+        return Array.apply(null, new Array(n)).map(function () {
+          docId += 1;
+          return {
+            _id: docId.toString(),
+            foo: Math.random().toString()
+          };
+        });
+      }
+
+      function complete() {
+        completeCalls++;
+        if (completeCalls === 2) {
+          done();
+        }
+      }
+
+      remote.bulkDocs(generateDocs(docsToGenerate)).then(function () {
+        firstReplication = db.replicate.to(remote, {
+          live: true,
+          retry: true,
+          since: 0
+        })
+        .on('error', done)
+        .on('complete', complete);
+
+        secondReplication = remote.replicate.to(db, {
+          live: true,
+          retry: true,
+          since: 0
+        })
+        .on('error', done)
+        .on('complete', complete)
+        .on('change', function (feed) {
+          // attempt to detect changes loop
+          var ids = feed.docs.map(function (d) {
+            return parseInt(d._id, 10);
+          }).sort();
+
+          var firstChange = ids[0];
+          if (firstChange <= lastChange) {
+            done(new Error("Duplicate change events detected"));
+          }
+
+          lastChange = ids[ids.length - 1];
+
+          if (lastChange === docsToGenerate - 1) {
+            // if a change loop doesn't occur within 2 seconds, assume success
+            setTimeout(function () {
+              // success!
+              // cancelling the replications to clean up and trigger
+              // the 'complete' event, which in turn ends the test
+              firstReplication.cancel();
+              secondReplication.cancel();
+            }, 2000);
+          }
+
+          // write doc to local db - should round trip in _changes
+          // but not generate a change event
+          db.bulkDocs(generateDocs(1));
+        });
+      }).catch(done);
+    });
+
+    describe('#5172 triggering error when replicating', function () {
+      var securedDbs = [], source, dest, previousAjax;
+      beforeEach(function () {
+        var err = {
+          'status': 401,
+          'name': 'unauthorized',
+          'message': 'You are not authorized to access this db.'
+        };
+
+        source = new PouchDB(dbs.name);
+        dest = new PouchDB(dbs.remote);
+
+        if (adapters[0] === 'http') {
+          previousAjax = source._ajax;
+          source._ajax = function (opts, cb) { cb(err); };
+          securedDbs.push(source);
+        }
+
+        if (adapters[1] === 'http') {
+          previousAjax = dest._ajax;
+          dest._ajax = function (opts, cb) { cb(err); };
+          securedDbs.push(dest);
+        }
+      });
+
+      afterEach(function () {
+        securedDbs.forEach(function (db) {
+          db._ajax = previousAjax;
+        });
+      });
+
+      function attachHandlers(replication) {
+        var invokedHandlers = [];
+        ['change', 'complete', 'paused', 'active', 'denied', 'error'].forEach(function (type) {
+          replication.on(type, function () {
+            invokedHandlers.push(type);
+          });
+        });
+        return invokedHandlers;
+      }
+
+      it('from or to a secured database, using live replication', function () {
+        if (adapters[0] === 'local' && adapters[1] === 'local') {
+          return;
+        }
+
+        var replication = source.replicate.to(dest, {live: true});
+        var invokedHandlers = attachHandlers(replication);
+
+        return replication.then(function () {
+          throw new Error('Resulting promise should be rejected');
+        }, function () {
+          invokedHandlers.should.be.eql(['error'], 'incorrect handler was invoked');
+        });
+      });
+
+      it('from or to a secured database, using live replication with checkpoint', function () {
+        if (adapters[0] === 'local' && adapters[1] === 'local') {
+          return;
+        }
+
+        var replication = source.replicate.to(dest, {live: true, since: 1234});
+        var invokedHandlers = attachHandlers(replication);
+
+        return replication.then(function () {
+          throw new Error('Resulting promise should be rejected');
+        }, function () {
+          invokedHandlers.should.be.eql(['error'], 'incorrect handler was invoked');
+        });
+      });
+
+      it('from or to a secured database, using live replication with retrying', function () {
+        if (adapters[0] === 'local' && adapters[1] === 'local') {
+          return;
+        }
+
+        var replication = source.replicate.to(dest, {live: true, retry: true});
+        var invokedHandlers = attachHandlers(replication);
+
+        return replication.then(function () {
+          throw new Error('Resulting promise should be rejected');
+        }, function () {
+          invokedHandlers.should.be.eql(['error'], 'incorrect handler was invoked');
+        });
+      });
+
+      it('from or to a secured database, using one-shot replication', function () {
+        if (adapters[0] === 'local' && adapters[1] === 'local') {
+          return;
+        }
+
+        var replication = source.replicate.to(dest);
+        var invokedHandlers = attachHandlers(replication);
+
+        return replication.then(function () {
+          throw new Error('Resulting promise should be rejected');
+        }, function () {
+          invokedHandlers.should.be.eql(['error'], 'incorrect handler was invoked');
+        });
+      });
+    });
   });
 });

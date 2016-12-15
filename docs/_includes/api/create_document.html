@@ -2,7 +2,7 @@
 
 ### Using db.put()
 {% highlight js %}
-db.put(doc, [docId], [docRev], [options], [callback])
+db.put(doc, [options], [callback])
 {% endhighlight %}
 
 Create a new document or update an existing document. If the document already exists, you must specify its revision `_rev`, otherwise a conflict will occur.
@@ -22,6 +22,19 @@ db.put({
   if (err) { return console.log(err); }
   // handle response
 });
+{% endhighlight %}
+{% include code/end.html %}
+
+{% include code/start.html id="newDoc" type="async" %}
+{% highlight js %}
+try {
+  var response = await db.put({
+    _id: 'mydoc',
+    title: 'Heroes'
+  });
+} catch (err) {
+  console.log(err);
+}
 {% endhighlight %}
 {% include code/end.html %}
 
@@ -56,6 +69,22 @@ db.get('mydoc', function(err, doc) {
 {% endhighlight %}
 {% include code/end.html %}
 
+{% include code/start.html id="updateDoc" type="async" %}
+{% highlight js %}
+try {
+  var doc = await db.get('mydoc');
+  var response = await db.put({
+    _id: 'mydoc',
+    _rev: doc._rev,
+    title: "Let's Dance"
+  });
+} catch (err) {
+  console.log(err);
+}
+{% endhighlight %}
+{% include code/end.html %}
+
+
 {% include code/start.html id="updateDoc" type="promise" %}
 {% highlight js %}
 db.get('mydoc').then(function(doc) {
@@ -64,37 +93,6 @@ db.get('mydoc').then(function(doc) {
     _rev: doc._rev,
     title: "Let's Dance"
   });
-}).then(function(response) {
-  // handle response
-}).catch(function (err) {
-  console.log(err);
-});
-{% endhighlight %}
-{% include code/end.html %}
-
-Instead of including the `_id` and `_rev` in the document, you can
-also pass them in as options:
-
-{% include code/start.html id="updateDoc2" type="callback" %}
-{% highlight js %}
-db.get('mydoc', function(err, doc) {
-  if (err) { return console.log(err); }
-  db.put({
-    title: "Sound and Vision"
-  }, 'mydoc', doc._rev, function(err, response) {
-    if (err) { return console.log(err); }
-    // handle response
-  });
-});
-{% endhighlight %}
-{% include code/end.html %}
-
-{% include code/start.html id="updateDoc2" type="promise" %}
-{% highlight js %}
-db.get('mydoc').then(function(doc) {
-  return db.put({
-    title: "Sound and Vision"
-  }, 'mydoc', doc._rev,);
 }).then(function(response) {
   // handle response
 }).catch(function (err) {
@@ -133,6 +131,18 @@ db.post({
   if (err) { return console.log(err); }
   // handle response
 });
+{% endhighlight %}
+{% include code/end.html %}
+
+{% include code/start.html id="post_doc" type="async" %}
+{% highlight js %}
+try {
+  var response = await db.post({
+    title: 'Ziggy Stardust'
+  });
+} catch (err) {
+  console.log(err);
+}
 {% endhighlight %}
 {% include code/end.html %}
 

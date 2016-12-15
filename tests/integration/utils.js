@@ -2,6 +2,7 @@
 /* jshint -W079 */
 'use strict';
 
+var path = require('path');
 var testUtils = {};
 
 function uniq(list) {
@@ -28,7 +29,7 @@ testUtils.isExpressRouter = function () {
 };
 
 testUtils.params = function () {
-  if (typeof module !== 'undefined' && module.exports) {
+  if (typeof process !== 'undefined' && !process.browser) {
     return process.env;
   }
   var paramStr = document.location.search.slice(1);
@@ -37,80 +38,38 @@ testUtils.params = function () {
       return acc;
     }
     var tmp = val.split('=');
-    acc[tmp[0]] = tmp[1] || true;
+    acc[tmp[0]] = decodeURIComponent(tmp[1]) || true;
     return acc;
   }, {});
 };
 
 testUtils.couchHost = function () {
-  if (typeof module !== 'undefined' && module.exports) {
-    return process.env.COUCH_HOST || 'http://localhost:5984';
-  } else if (window && window.COUCH_HOST) {
-    return window.COUCH_HOST;
-  } else if (window && window.cordova) {
-    // magic route to localhost on android emulator,
-    // cors not needed because cordova
+  if (typeof window !== 'undefined' && window.cordova) {
+    // magic route to localhost on android emulator
     return 'http://10.0.2.2:5984';
   }
-  // In the browser we default to the CORS server, in future will change
-  return 'http://localhost:2020';
-};
 
-// Abstracts constructing a Blob object, so it also works in older
-// browsers that don't support the native Blob constructor (e.g.
-// old QtWebKit versions, Android < 4.4).
-// Copied over from createBlob.js in PouchDB because we don't
-// want to have to export this function in utils
-function createBlob(parts, properties) {
-  /* global BlobBuilder,MSBlobBuilder,MozBlobBuilder,WebKitBlobBuilder */
-  parts = parts || [];
-  properties = properties || {};
-  try {
-    return new Blob(parts, properties);
-  } catch (e) {
-    if (e.name !== "TypeError") {
-      throw e;
-    }
-    var Builder = typeof BlobBuilder !== 'undefined' ? BlobBuilder :
-                  typeof MSBlobBuilder !== 'undefined' ? MSBlobBuilder :
-                  typeof MozBlobBuilder !== 'undefined' ? MozBlobBuilder :
-                  WebKitBlobBuilder;
-    var builder = new Builder();
-    for (var i = 0; i < parts.length; i += 1) {
-      builder.append(parts[i]);
-    }
-    return builder.getBlob(properties.type);
+  if (typeof window !== 'undefined' && window.COUCH_HOST) {
+    return window.COUCH_HOST;
   }
-}
 
-testUtils.makeBlob = function (data, type) {
-  if (typeof module !== 'undefined' && module.exports) {
-    return new Buffer(data, 'binary');
-  } else {
-    return createBlob([data], {
-      type: (type || 'text/plain')
-    });
+  if (typeof process !== 'undefined' && process.env.COUCH_HOST) {
+    return process.env.COUCH_HOST;
   }
-};
 
-testUtils.binaryStringToBlob = function (bin, type) {
-  return PouchDB.utils.binaryStringToBlobOrBuffer(bin, type);
-};
+  if ('couchHost' in testUtils.params()) {
+    return testUtils.params().couchHost;
+  }
 
-testUtils.btoa = function (arg) {
-  return PouchDB.utils.btoa(arg);
-};
-
-testUtils.atob = function (arg) {
-  return PouchDB.utils.atob(arg);
+  return 'http://localhost:5984';
 };
 
 testUtils.readBlob = function (blob, callback) {
-  if (typeof module !== 'undefined' && module.exports) {
+  if (typeof process !== 'undefined' && !process.browser) {
     callback(blob.toString('binary'));
   } else {
     var reader = new FileReader();
-    reader.onloadend = function (e) {
+    reader.onloadend = function () {
       
       var binary = "";
       var bytes = new Uint8Array(this.result || '');
@@ -127,17 +86,17 @@ testUtils.readBlob = function (blob, callback) {
 };
 
 testUtils.readBlobPromise = function (blob) {
-  return new PouchDB.utils.Promise(function (resolve) {
+  return new testUtils.Promise(function (resolve) {
     testUtils.readBlob(blob, resolve);
   });
 };
 
 testUtils.base64Blob = function (blob, callback) {
-  if (typeof module !== 'undefined' && module.exports) {
+  if (typeof process !== 'undefined' && !process.browser) {
     callback(blob.toString('base64'));
   } else {
     testUtils.readBlob(blob, function (binary) {
-      callback(PouchDB.utils.btoa(binary));
+      callback(testUtils.btoa(binary));
     });
   }
 };
@@ -145,6 +104,13 @@ testUtils.base64Blob = function (blob, callback) {
 // Prefix http adapter database names with their host and
 // node adapter ones with a db location
 testUtils.adapterUrl = function (adapter, name) {
+
+  // CouchDB master has problems with cycling databases rapidly
+  // so give tests seperate names
+  if (testUtils.isCouchMaster()) {
+    name += '_' + Date.now();
+  }
+
   if (adapter === 'http') {
     return testUtils.couchHost() + '/' + name;
   }
@@ -155,13 +121,13 @@ testUtils.adapterUrl = function (adapter, name) {
 testUtils.cleanup = function (dbs, done) {
   dbs = uniq(dbs);
   var num = dbs.length;
-  var finished = function() {
+  var finished = function () {
     if (--num === 0) {
       done();
     }
   };
 
-  dbs.forEach(function(db) {
+  dbs.forEach(function (db) {
     new PouchDB(db).destroy(finished, finished);
   });
 };
@@ -170,7 +136,7 @@ testUtils.cleanup = function (dbs, done) {
 // in rev_tree). Doc must have _rev. If prevRev is not specified
 // just insert doc with correct _rev (new_edits=false!)
 testUtils.putAfter = function (db, doc, prevRev, callback) {
-  var newDoc = PouchDB.utils.extend({}, doc);
+  var newDoc = testUtils.extend({}, doc);
   if (!prevRev) {
     db.put(newDoc, { new_edits: false }, callback);
     return;
@@ -198,9 +164,9 @@ testUtils.putBranch = function (db, docs, callback) {
         callback();
       }
     }
-    db.get(doc._id, { rev: doc._rev }, function (err, ok) {
+    db.get(doc._id, { rev: doc._rev }, function (err) {
       if (err) {
-        testUtils.putAfter(db, docs[i], prev, function (err, doc) {
+        testUtils.putAfter(db, docs[i], prev, function () {
           next();
         });
       } else {
@@ -226,7 +192,7 @@ testUtils.putTree = function (db, tree, callback) {
 };
 
 testUtils.isCouchDB = function (cb) {
-  PouchDB.ajax({url: testUtils.couchHost() + '/' }, function (err, res) {
+  testUtils.ajax({url: testUtils.couchHost() + '/' }, function (err, res) {
     cb('couchdb' in res);
   });
 };
@@ -281,12 +247,12 @@ testUtils.fin = function (promise, cb) {
 };
 
 testUtils.promisify = function (fun, context) {
-  return function() {
+  return function () {
     var args = [];
     for (var i = 0; i < arguments.length; i++) {
       args[i] = arguments[i];
     }
-    return new PouchDB.utils.Promise(function (resolve, reject) {
+    return new testUtils.Promise(function (resolve, reject) {
       args.push(function (err, res) {
         if (err) {
           return reject(err);
@@ -298,32 +264,110 @@ testUtils.promisify = function (fun, context) {
   };
 };
 
-var testDir;
-if (typeof module !== 'undefined' && module.exports) {
-  global.PouchDB = require('../../lib');
-  global.binaryStringToBlobOrBuffer =
-    require('../../lib/deps/binary/binaryStringToBlobOrBuffer');
-  if (process.env.LEVEL_ADAPTER || process.env.LEVEL_PREFIX) {
-    var defaults = {};
+// We need to use pouchdb-for-coverage here to ensure that e.g pouchdb-utils
+// and pouchdb-ajax don't get pulled in, because then our coverage tests
+// would complain that we're not using the "whole" thing.
+var PouchForCoverage = require('../../packages/node_modules/pouchdb-for-coverage');
+var pouchUtils = PouchForCoverage.utils;
+testUtils.binaryStringToBlob = pouchUtils.binaryStringToBlobOrBuffer;
+testUtils.btoa = pouchUtils.btoa;
+testUtils.atob = pouchUtils.atob;
+testUtils.Promise = pouchUtils.Promise;
+testUtils.ajax = PouchForCoverage.ajax;
+testUtils.uuid = pouchUtils.uuid;
+testUtils.parseUri = pouchUtils.parseUri;
+testUtils.errors = PouchForCoverage.Errors;
+testUtils.extend = pouchUtils.jsExtend;
 
-    if (process.env.LEVEL_ADAPTER) {
-      defaults.db = require(process.env.LEVEL_ADAPTER);
-      console.log('Using client-side leveldown adapter: ' +
-        process.env.LEVEL_ADAPTER);
-    }
-    if (process.env.LEVEL_PREFIX) {
-      defaults.prefix = process.env.LEVEL_PREFIX;
-      console.log('Using client-side leveldown prefix: ' + defaults.prefix);
-    }
-    global.PouchDB = global.PouchDB.defaults(defaults);
-  } else if (process.env.AUTO_COMPACTION) {
-    global.PouchDB = global.PouchDB.defaults({auto_compaction: true});
+testUtils.makeBlob = function (data, type) {
+  if (typeof process !== 'undefined' && !process.browser) {
+    // "global.Buffer" is to avoid Browserify pulling this in
+    return new global.Buffer(data, 'binary');
+  } else {
+    return pouchUtils.blob([data], {
+      type: (type || 'text/plain')
+    });
   }
+};
+
+testUtils.getUnHandledRejectionEventName = function () {
+  return typeof window !== 'undefined' ? 'unhandledrejection' :
+    'unhandledRejection';
+};
+
+testUtils.addGlobalEventListener = function (eventName, listener) {
+  // The window test has to go first because the process test will pass
+  // in the browser's test environment
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    return window.addEventListener(eventName, listener);
+  }
+
   if (typeof process !== 'undefined') {
-    testDir = process.env.TESTS_DIR ? process.env.TESTS_DIR : './tmp';
-    testDir = testDir.slice(-1) === '/' ? testDir : testDir + '/';
-    global.PouchDB.prefix = testDir + global.PouchDB.prefix;
-    require('../../lib/adapters/leveldb').use_prefix = true;
+    return process.on(eventName, listener);
   }
+
+  return null;
+};
+
+testUtils.addUnhandledRejectionListener = function (listener) {
+  return testUtils.addGlobalEventListener(
+    testUtils.getUnHandledRejectionEventName(), listener);
+};
+
+testUtils.removeGlobalEventListener = function (eventName, listener) {
+  if (typeof process !== 'undefined') {
+    return process.removeListener(eventName, listener);
+  }
+
+  if (typeof window !== 'undefined' && window.removeEventListener) {
+    return window.removeEventListener(eventName, listener);
+  }
+
+  return null;
+};
+
+testUtils.removeUnhandledRejectionListener = function (listener) {
+  return testUtils.removeGlobalEventListener(
+    testUtils.getUnHandledRejectionEventName(), listener);
+};
+
+if (typeof process !== 'undefined' && !process.browser) {
+  if (process.env.COVERAGE) {
+    global.PouchDB = require('../../packages/node_modules/pouchdb-for-coverage');
+  } else { // no need to check for coverage
+    // string addition is to avoid browserify pulling in whole thing
+    global.PouchDB = require('../../packages/' + 'node_modules/pouchdb');
+  }
+
+  if (process.env.AUTO_COMPACTION) {
+    // test autocompaction
+    global.PouchDB = global.PouchDB.defaults({
+      auto_compaction: true,
+      prefix: './tmp/_pouch_'
+    });
+  } else if (process.env.ADAPTER === 'websql') {
+    // test WebSQL in Node
+    // (the two strings are just to fool Browserify because sqlite3 fails
+    // in Node 0.11-0.12)
+   global.PouchDB.plugin(require('../../packages/node_modules/' +
+      'pouchdb-adapter-node-websql'));
+    global.PouchDB.preferredAdapters = ['websql', 'leveldb'];
+    global.PouchDB = global.PouchDB.defaults({
+      prefix: path.resolve('./tmp/_pouch_')
+    });
+  } else if (process.env.ADAPTER === 'memory') {
+    global.PouchDB.plugin(require('../../packages/node_modules/' +
+      'pouchdb-adapter-memory'));
+    global.PouchDB.preferredAdapters = ['memory', 'leveldb'];
+  } else {
+    // test regular leveldown in node
+    global.PouchDB = global.PouchDB.defaults({
+      prefix: path.resolve('./tmp/_pouch_')
+    });
+  }
+
+  require('mkdirp').sync('./tmp');
   module.exports = testUtils;
+} else {
+  window.testUtils = testUtils;
 }

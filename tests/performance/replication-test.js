@@ -57,7 +57,9 @@ module.exports = function (PouchDB, Promise) {
           });
       };
 
-      return addGeneration(gens, docs).then(callback);
+      return addGeneration(gens, docs).then(function (/* result */) {
+        callback();
+      }).catch(callback);
     };
   };
 
@@ -83,7 +85,7 @@ module.exports = function (PouchDB, Promise) {
 
   PullRequestTestObject.prototype.tearDown = function () {
     var self = this;
-    return function (ignoreDB, ignoreContext) {
+    return function () {
       return self.remoteDB.destroy().then(function () {
         return Promise.all(
           self.localPouches.map(function (localPouch) {

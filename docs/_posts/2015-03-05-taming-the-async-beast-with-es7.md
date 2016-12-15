@@ -106,7 +106,7 @@ With promises, you'd have to write something like this:
 
 {% highlight js %}
 db.get('docid').catch(function (err) {
-  if (err.status === 404) { // not found
+  if (err.name === 'not_found') {
     return {}; // new doc
   }
   throw err; // some error other than 404
@@ -122,7 +122,7 @@ let doc;
 try {
   doc = await db.get('docid');
 } catch (err) {
-  if (err.status === 404) { // not found
+  if (err.name === 'not_found') {
     doc = {};
   } else {
     throw err; // some error other than 404
@@ -311,18 +311,6 @@ console.log(results);
 {% endhighlight %}
 
 Presumably this could look even nicer if we used [array comprehesions](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Array_comprehensions). However, the spec isn't final yet, so it's currently [not supported](https://github.com/facebook/regenerator/issues/182) by Regenerator.
-
-**Edit:** It was pointed out to me that you can actually do:
-
-{% highlight js %}
-let docs = [{}, {}, {}];
-let promises = docs.map((doc) => db.post(doc));
-
-let results = await* promises;
-console.log(results);
-{% endhighlight %}
-
-This `await*` trick does the same thing as `await Promise.all()`, and it's much more concise. Plus, it's supported by Regenerator!
 
 ### Caveats
 

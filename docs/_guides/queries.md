@@ -15,8 +15,7 @@ Before you solve a problem with secondary indexes, you should ask yourself: can 
 
 {% include alert/end.html %}
 
-Mappin' and reducin'
--------
+{% include anchor.html title="Mappin' and reducin'" hash="mappin-and-reducin" %}
 
 The PouchDB `query()` API (which corresponds to the `_view` API in CouchDB) has two modes: temporary queries and persistent queries.
 
@@ -34,7 +33,7 @@ db.query(function (doc, emit) {
 });
 ```
 
-In the above example, the `result` object will contain all documents where the `name` attribute is equal to `'foo'`.
+In the above example, the `result` object will contain stubs of documents where the `name` attribute is equal to `'foo'`. To include the document in each row of results, use the `include_docs` option.
 
 {% include alert/start.html variant="info" %}
 
@@ -74,6 +73,13 @@ object for becoming valid JSON.
 
 {% include alert/end.html %}
 
+{% include alert/start.html variant="info" %}
+
+The <code>emit</code> function will be available in scope when the map function is
+run, so don't pass it in as a parameter.
+
+{% include alert/end.html %}
+
 Then you actually query it, by using the name you gave the design document when you saved it:
 
 ```js
@@ -107,8 +113,7 @@ CouchDB builds indexes in exactly the same way as PouchDB. So you may want to fa
 {% include alert/end.html %}
 
 
-More about map/reduce
------
+{% include anchor.html title="More about map/reduce" hash="more-about-map-reduce" %}
 
 That was a fairly whirlwind tour of the `query()` API, so let's get into more detail about how to write your map/reduce functions.
 
@@ -142,7 +147,7 @@ It may sound daunting at first, but in the simplest (and most common) case, you 
 function myMapFunction(doc) {
   emit(doc.name);
 }
-```  
+```
 
 This is functionally equivalent to the SQL index given above.  What it essentially says is: "for each document in the database, emit its name as a key."
 
@@ -216,8 +221,7 @@ pouch.query(myMapReduceFun, {
 
 If you're adventurous, though, you should check out the [CouchDB documentation](http://couchdb.readthedocs.org/en/latest/couchapp/views/intro.html) or the [PouchDB documentation](http://pouchdb.com/api.html#query_database) for details on reduce functions.
 
-More about map/reduce
--------
+{% include anchor.html title="PouchDB Find" hash="pouchdb-find" %}
 
 The map/reduce API is complex. Part of this problem will be resolved when the more developer-friendly [Cloudant query language](http://docs.cloudant.com/api/cloudant-query.html) is released in CouchDB 2.0, and the equivalent [pouchdb-find plugin](https://github.com/nolanlawson/pouchdb-find) is finished.
 
@@ -233,13 +237,11 @@ In the meantime, there are a few tricks you can use to avoid unnecessarily compl
 2. If your data is highly relational, try the [relational-pouch](https://github.com/nolanlawson/relational-pouch) plugin.
 1. Read the [12 tips for better code with PouchDB](/2014/06/17/12-pro-tips-for-better-code-with-pouchdb.html).
 
-Related API documentation
---------
+{% include anchor.html title="Related API documentation" hash="related-api-documentation" %}
 
 * [query()](/api.html#query_database)
 * [viewCleanup()](/api.html#view_cleanup)
 
-Next
------
+{% include anchor.html title="Next" hash="next" %}
 
 Now that we've learned how to map reduce, map reuse, and map recycle, let's move on to `destroy()` and `compact()`.

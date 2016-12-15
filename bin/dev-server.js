@@ -2,99 +2,93 @@
 
 'use strict';
 
-var fs = require('fs');
 var Promise = require('lie');
-var through = require('through2');
-var _derequire = require('derequire');
-var watchify = require('watchify');
-var browserify = require('browserify');
-var cors_proxy = require('corsproxy');
-var http_proxy = require('pouchdb-http-proxy');
+var watch = require('watch-glob');
 var http_server = require('http-server');
-var mkdirp = require('mkdirp');
+var debounce = require('lodash.debounce');
+var buildPouchDB = require('./build-pouchdb');
+var browserify = require('browserify');
+var fs = require('fs');
 
-function derequire() {
-  var out = new Buffer('');
-  return through(function (data, _, next) {
-    out = Buffer.concat([out, data]);
-    next();
-  }, function (next) {
-    this.push(_derequire(out.toString()));
-    next();
-  });
-}
 var queryParams = {};
 
-if (process.env.ES5_SHIM || process.env.ES5_SHIMS) {
-  queryParams.es5shim = true;
-}
 if (process.env.ADAPTERS) {
   queryParams.adapters = process.env.ADAPTERS;
 }
 if (process.env.AUTO_COMPACTION) {
   queryParams.autoCompaction = true;
 }
+if (process.env.POUCHDB_SRC) {
+  queryParams.src = process.env.POUCHDB_SRC;
+}
+if (process.env.COUCH_HOST) {
+  queryParams.couchHost = process.env.COUCH_HOST;
+}
 
-var indexfile = "./lib/index.js";
-var outfile = "./dist/pouchdb.js";
-var perfRoot = './tests/performance/';
-var performanceBundle = './tests/performance-bundle.js';
+if (process.env.NEXT) {
+  queryParams.src = '../../packages/node_modules/pouchdb/dist/pouchdb-next.js';
+}
 
-var w = watchify(browserify(indexfile, {
-  standalone: "PouchDB",
-  cache: {},
-  packageCache: {},
-  fullPaths: true,
-  debug: true
-})).on('update', bundle);
-var b = watchify(browserify({
-    entries: perfRoot,
-    cache: {},
-    packageCache: {},
-    fullPaths: true,
-    debug: true
-  })).on('update', bundlePerfTests);
+var rebuildPromise = Promise.resolve();
 
-function bundle(callback) {
-  mkdirp.sync('./dist');
-  w.bundle().pipe(derequire()).pipe(fs.createWriteStream(outfile))
-  .on('finish', function () {
-    console.log('Updated: ', outfile);
-    if (typeof callback === 'function') {
-      callback();
-    }
+function rebuildPouch() {
+  rebuildPromise = rebuildPromise.then(buildPouchDB).then(function () {
+    console.log('Rebuilt packages/node_modules/pouchdb');
+  }).catch(console.error);
+}
+
+function browserifyPromise(src, dest) {
+  return new Promise(function (resolve, reject) {
+    browserify(src, {debug: true}).bundle().pipe(fs.createWriteStream(dest))
+      .on('finish', resolve)
+      .on('error', reject);
   });
 }
 
-function bundlePerfTests(callback) {
-   
-  b.bundle().pipe(fs.createWriteStream(performanceBundle))
-  .on('finish', function () {
-    console.log('Updated: ', performanceBundle);
-    if (typeof callback === 'function') {
-      callback();
-    }
-  });
+function rebuildTestUtils() {
+  rebuildPromise = rebuildPromise.then(function () {
+    return browserifyPromise('tests/integration/utils.js',
+      'tests/integration/utils-bundle.js');
+  }).then(function () {
+    console.log('Rebuilt tests/integration/utils-bundle.js');
+  }).catch(console.error);
+}
 
+function rebuildPerf() {
+  rebuildPromise = rebuildPromise.then(function () {
+    return browserifyPromise('tests/performance/index.js',
+      'tests/performance-bundle.js');
+  }).then(function () {
+    console.log('Rebuilt tests/performance-bundle.js');
+  }).catch(console.error);
+}
+
+function watchAll() {
+  watch(['packages/node_modules/**/src/**/*.js'],
+    debounce(rebuildPouch, 700, {leading: true}));
+  watch(['tests/integration/utils.js'],
+    debounce(rebuildTestUtils, 700, {leading: true}));
+  watch(['tests/performance/**/*.js'],
+    debounce(rebuildPerf, 700, {leading: true}));
 }
 
 var filesWritten = false;
-Promise.all([
-  new Promise(function (resolve) {
-    bundle(resolve);
-  }),
-  new Promise(function (resolve) {
-    bundlePerfTests(resolve);
-  })
-]).then(function () {
+
+Promise.resolve().then(function () {
+  if (process.env.TRAVIS) {
+    return; // don't bother rebuilding in Travis; we already built
+  }
+  return Promise.all([
+    rebuildPouch(),
+    rebuildTestUtils(),
+    rebuildPerf()
+  ]);
+}).then(function () {
   filesWritten = true;
   checkReady();
 });
 
-var COUCH_HOST = process.env.COUCH_HOST || 'http://127.0.0.1:5984';
-
 var HTTP_PORT = 8000;
-var CORS_PORT = 2020;
 
 // if SERVER=sync-gateway we also have 
 // tests/misc/sync-gateway-config-server.js 
@@ -106,23 +100,20 @@ var readyCallback;
 function startServers(callback) {
   readyCallback = callback;
   http_server.createServer().listen(HTTP_PORT, function () {
-    cors_proxy.options = {target: COUCH_HOST};
-    http_proxy.createServer(cors_proxy).listen(CORS_PORT, function () {
-      var testRoot = 'http://127.0.0.1:' + HTTP_PORT;
-      var query = '';
-      Object.keys(queryParams).forEach(function (key) {
-        query += (query ? '&' : '?');
-        query += key + '=' + encodeURIComponent(queryParams[key]);
-      });
-      console.log('Integration tests: ' + testRoot +
-        '/tests/integration/' + query);
-      console.log('Map/reduce  tests: ' + testRoot +
-      '/tests/mapreduce' + query);
-      console.log('Performance tests: ' + testRoot +
-        '/tests/performance/');
-      serversStarted = true;
-      checkReady();
+    var testRoot = 'http://127.0.0.1:' + HTTP_PORT;
+    var query = '';
+    Object.keys(queryParams).forEach(function (key) {
+      query += (query ? '&' : '?');
+      query += key + '=' + encodeURIComponent(queryParams[key]);
     });
+    console.log('Integration tests: ' + testRoot +
+                '/tests/integration/' + query);
+    console.log('Map/reduce  tests: ' + testRoot +
+                '/tests/mapreduce' + query);
+    console.log('Performance tests: ' + testRoot +
+                '/tests/performance/' + query);
+    serversStarted = true;
+    checkReady();
   });
 }
 
@@ -132,9 +123,9 @@ function checkReady() {
   }
 }
 
-
 if (require.main === module) {
   startServers();
+  watchAll();
 } else {
   module.exports.start = startServers;
 }

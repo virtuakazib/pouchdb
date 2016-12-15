@@ -6,7 +6,7 @@ sidebar: nav.html
 
 Below is a list of known plugins, tools and projects can be used with PouchDB.
 
-{% include anchor.html title="Plugins" hash="plugins" %}
+## {% include anchor.html title="Plugins" hash="plugins" %}
 
 #### [PouchDB allDbs()](https://github.com/nolanlawson/pouchdb-all-dbs)
 
@@ -167,6 +167,18 @@ An Express submodule with a CouchDB-style REST interface to PouchDB. Powers Pouc
 
 Server-side Express endpoint to deliver a stream from [PouchDB Replication Stream](https://github.com/nolanlawson/pouchdb-replication-stream).
 
+#### [Pouch Websocket Sync](https://github.com/pgte/pouch-websocket-sync)
+
+Sync several PouchDBs through websockets. Supports reconnection, negotiation and authentication.
+
+#### [Pouch Remote Stream](https://github.com/pgte/pouch-remote-stream#readme)
+
+Consume a remote PouchDB stream. Goes well with [pouch-stream-server](https://github.com/pgte/pouch-stream-server#readme) on the server side.
+
+#### [Pouch Stream Server](https://github.com/pgte/pouch-stream-server#readme)
+
+PouchDB stream server. Serves generic PouchDB object streams. Goes well with [pouch-remote-stream](https://github.com/pgte/pouch-remote-stream#readme) on the client.
+
 {% include anchor.html title="Framework adapters" hash="framework_adapters" %}
 
 ### Angular
@@ -207,7 +219,7 @@ Ember Data adapter for PouchDB/CouchDB.
 
 #### [ember-pouchdb](https://github.com/taras/ember-pouchdb)
 
-Promisy PouchDB wrapper for Ember.js
+Promisy PouchDB wrapper for Ember.js.
 
 ### Kendo UI
 
@@ -217,6 +229,10 @@ Kendo UI DataSource adapter.
 
 ### React/Flux
 
+#### [pouch-redux](https://github.com/UXtemple/pouch-redux)
+
+Pouch and Redux integration. With Pouch in control this time around. 
+
 #### [redux-pouchdb](https://github.com/vicentedealencar/redux-pouchdb)
 
 Sync store state to PouchDB.
@@ -224,6 +240,10 @@ Sync store state to PouchDB.
 #### [redux-pouch](https://github.com/UXtemple/redux-pouch)
 
 PouchDB-backed Redux.
+
+#### [pouch-redux-middleware](https://github.com/pgte/pouch-redux-middleware#readme)
+
+Redux middleware to sync a PouchDB database with the Redux state.
 
 {% include anchor.html title="Other languages" hash="Other languages" %}
 
@@ -239,6 +259,10 @@ Android adapter with a native Java interface to PouchDB.
 #### [blob-util](https://github.com/nolanlawson/blob-util)
 
 Shims and utils for working with binary Blobs in the browser.
+
+#### [Pouchy] (https://www.npmjs.com/package/pouchy)
+
+PouchDB sugar API. ([Github](https://github.com/cdaringe/pouchy))
 
 #### [Puton](http://puton.jit.su/)
 
